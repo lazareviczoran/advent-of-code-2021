@@ -12,20 +12,33 @@ fn main() {
     println!("part 2 solution: {}", submarine.get_score());
 }
 
+struct Position {
+    x: usize,
+    y: usize,
+    aim: usize,
+}
+impl Position {
+    pub fn new() -> Self {
+        Self { x: 0, y: 0, aim: 0 }
+    }
+}
+
 struct Submarine {
-    pos: (usize, usize, usize),
+    pos: Position,
 }
 impl Submarine {
     pub fn new() -> Self {
-        Self { pos: (0, 0, 0) }
+        Self {
+            pos: Position::new(),
+        }
     }
 
     pub fn apply_commands(&mut self, commands: &[Direction]) {
         for dir in commands {
             match dir {
-                Direction::Forward(val) => self.pos.0 += val,
-                Direction::Up(val) => self.pos.1 -= val,
-                Direction::Down(val) => self.pos.1 += val,
+                Direction::Forward(val) => self.pos.x += val,
+                Direction::Up(val) => self.pos.y -= val,
+                Direction::Down(val) => self.pos.y += val,
             }
         }
     }
@@ -34,21 +47,21 @@ impl Submarine {
         for dir in commands {
             match dir {
                 Direction::Forward(val) => {
-                    self.pos.0 += val;
-                    self.pos.1 += val * self.pos.2;
+                    self.pos.x += val;
+                    self.pos.y += val * self.pos.aim;
                 }
-                Direction::Up(val) => self.pos.2 -= val,
-                Direction::Down(val) => self.pos.2 += val,
+                Direction::Up(val) => self.pos.aim -= val,
+                Direction::Down(val) => self.pos.aim += val,
             }
         }
     }
 
     pub fn get_score(&self) -> usize {
-        self.pos.0 * self.pos.1
+        self.pos.x * self.pos.y
     }
 
     pub fn reset(&mut self) {
-        self.pos = (0, 0, 0);
+        self.pos = Position::new();
     }
 }
 

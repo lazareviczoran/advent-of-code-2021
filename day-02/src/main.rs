@@ -1,8 +1,10 @@
-use core::panic;
-use std::fs::read_to_string;
+use std::{
+    fs::read_to_string,
+    io::{Error, ErrorKind},
+};
 
-fn main() {
-    let input = read("input.txt");
+fn main() -> Result<(), Error> {
+    let input = read("input.txt")?;
     let mut submarine = Submarine::new();
     submarine.apply_commands(&input);
     println!("part 1 solution: {}", submarine.get_score());
@@ -10,6 +12,7 @@ fn main() {
     submarine.reset();
     submarine.apply_commands2(&input);
     println!("part 2 solution: {}", submarine.get_score());
+    Ok(())
 }
 
 struct Position {
@@ -71,19 +74,25 @@ enum Direction {
     Down(usize),
 }
 
-fn read(filename: &str) -> Vec<Direction> {
+fn read(filename: &str) -> Result<Vec<Direction>, Error> {
     read_to_string(filename)
         .expect("Failed to read file")
         .lines()
         .map(|l| {
             let mut items = l.split_terminator(' ');
-            let dir = items.next().unwrap();
-            let val = items.next().unwrap().parse().unwrap();
+            let dir = items
+                .next()
+                .ok_or_else(|| Error::new(ErrorKind::Other, "missing direction"))?;
+            let val = items
+                .next()
+                .ok_or_else(|| Error::new(ErrorKind::Other, "missing value"))?
+                .parse()
+                .map_err(|_| Error::new(ErrorKind::Other, "cannot convert to usize"))?;
             match dir {
-                "forward" => Direction::Forward(val),
-                "up" => Direction::Up(val),
-                "down" => Direction::Down(val),
-                _ => panic!("unexpected value"),
+                "forward" => Ok(Direction::Forward(val)),
+                "up" => Ok(Direction::Up(val)),
+                "down" => Ok(Direction::Down(val)),
+                _ => Err(Error::new(ErrorKind::Other, "unexpected value")),
             }
         })
         .collect()
@@ -92,22 +101,25 @@ fn read(filename: &str) -> Vec<Direction> {
 #[cfg(test)]
 mod tests {
     use crate::{read, Submarine};
+    use std::io::Error;
 
     #[test]
-    fn part1_test() {
-        let input = read("test-input.txt");
+    fn part1_test() -> Result<(), Error> {
+        let input = read("test-input.txt")?;
         let mut submarine = Submarine::new();
         submarine.apply_commands(&input);
 
         assert_eq!(submarine.get_score(), 150);
+        Ok(())
     }
 
     #[test]
-    fn part2_test() {
-        let input = read("test-input.txt");
+    fn part2_test() -> Result<(), Error> {
+        let input = read("test-input.txt")?;
         let mut submarine = Submarine::new();
         submarine.apply_commands2(&input);
 
         assert_eq!(submarine.get_score(), 900);
+        Ok(())
     }
 }

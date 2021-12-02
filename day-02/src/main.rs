@@ -79,13 +79,10 @@ fn read(filename: &str) -> Result<Vec<Direction>, Error> {
         .expect("Failed to read file")
         .lines()
         .map(|l| {
-            let mut items = l.split_terminator(' ');
-            let dir = items
-                .next()
-                .ok_or_else(|| Error::new(ErrorKind::Other, "missing direction"))?;
-            let val = items
-                .next()
-                .ok_or_else(|| Error::new(ErrorKind::Other, "missing value"))?
+            let (dir, val) = l
+                .split_once(' ')
+                .ok_or_else(|| Error::new(ErrorKind::Other, "input not in correct format"))?;
+            let val = val
                 .parse()
                 .map_err(|_| Error::new(ErrorKind::Other, "cannot convert to usize"))?;
             match dir {

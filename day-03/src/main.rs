@@ -61,10 +61,7 @@ where
     let mut values = values.to_vec();
     for i in 0..values[0].len() {
         let dom = get_dominant_at_col(&values, i);
-        values = values
-            .into_iter()
-            .filter(|row| row[i] == filter_fn(&dom))
-            .collect();
+        values.retain(|row| row[i] == filter_fn(&dom));
         if values.len() == 1 {
             break;
         }

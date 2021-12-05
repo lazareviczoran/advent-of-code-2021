@@ -19,8 +19,8 @@ impl Point {
 
 fn count_intersections(mappings: &[(Point, Point)], include_diagonals: bool) -> usize {
     get_marked_field(mappings, include_diagonals)
-        .values()
-        .filter(|v| **v > 1)
+        .iter()
+        .filter(|&(_, &v)| v > 1)
         .count()
 }
 

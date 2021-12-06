@@ -1,25 +1,40 @@
-use std::fs::read_to_string;
+use std::{collections::HashMap, fs::read_to_string};
 
 fn main() {
     let input = read("input.txt");
-    println!("part1 solution: {}", run_cycle(&mut input.clone(), 80));
+    println!("part1 solution: {}", count_lanternfish(&input, 80));
+    println!("part2 solution: {}", count_lanternfish(&input, 256));
 }
 
-fn run_cycle(input: &mut Vec<usize>, period: usize) -> usize {
-    for day in 0..period {
-        let mut new_fishes = Vec::new();
-        input.iter_mut().for_each(|fish| {
-            if fish == &0 {
-                new_fishes.push(8);
-                *fish = 6;
-            } else {
-                *fish -= 1;
-            }
-        });
-        // println!("{:?}", input);
-        input.extend(new_fishes);
+fn count_lanternfish(input: &[usize], period: usize) -> usize {
+    let mut memo = HashMap::new();
+    input
+        .iter()
+        .map(|&fish| 1 + get_number_of_fishes_for_single(fish, 0, period, &mut memo))
+        .sum()
+}
+
+fn get_number_of_fishes_for_single(
+    fish: usize,
+    start: usize,
+    period: usize,
+    memo: &mut HashMap<(usize, usize), usize>,
+) -> usize {
+    if start > period {
+        return 0;
     }
-    input.iter().count()
+
+    (start + fish + 1..=period)
+        .step_by(7)
+        .map(|i| {
+            if let Some(&count) = memo.get(&(8, i)) {
+                return count;
+            }
+            let res = 1 + get_number_of_fishes_for_single(8, i, period, memo);
+            memo.insert((8, i), res);
+            res
+        })
+        .sum()
 }
 
 fn read(filename: &str) -> Vec<usize> {
@@ -37,12 +52,18 @@ fn read(filename: &str) -> Vec<usize> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{read, run_cycle};
+    use crate::{count_lanternfish, read};
 
     #[test]
     fn part1_test() {
-        let mut input = read("test-input.txt");
-        assert_eq!(run_cycle(&mut input.clone(), 18), 26);
-        assert_eq!(run_cycle(&mut input, 80), 5934);
+        let input = read("test-input.txt");
+        assert_eq!(count_lanternfish(&input, 18), 26);
+        assert_eq!(count_lanternfish(&input, 80), 5934);
+    }
+
+    #[test]
+    fn part2_test() {
+        let input = read("test-input.txt");
+        assert_eq!(count_lanternfish(&input, 256), 26984457539);
     }
 }

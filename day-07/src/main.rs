@@ -14,23 +14,17 @@ fn calc_min_fuel_multi_step(positions: &[usize]) -> Option<usize> {
     calc_min_fuel(positions, |x| (1..=x).sum())
 }
 
-fn calc_min_fuel<F>(positions: &[usize], step_fn: F) -> Option<usize>
-where
-    F: FnMut(usize) -> usize + Copy,
-{
+fn calc_min_fuel(positions: &[usize], step_fn: impl Fn(usize) -> usize) -> Option<usize> {
     (0..positions.len())
-        .map(|target_pos| calc_fuel_consumption_for_target_pos(positions, &target_pos, step_fn))
+        .map(|target_pos| calc_fuel_consumption_for_target_pos(positions, &target_pos, &step_fn))
         .min()
 }
 
-fn calc_fuel_consumption_for_target_pos<F>(
+fn calc_fuel_consumption_for_target_pos(
     positions: &[usize],
     target: &usize,
-    mut step_fn: F,
-) -> usize
-where
-    F: FnMut(usize) -> usize + Copy,
-{
+    step_fn: impl Fn(usize) -> usize,
+) -> usize {
     let calc_required_fuel = |pos: &usize, target: &usize| pos.max(target) - pos.min(target);
     positions
         .iter()

@@ -11,7 +11,7 @@ fn calc_min_fuel_single_step(positions: &[isize]) -> Option<isize> {
 }
 
 fn calc_min_fuel_multi_step(positions: &[isize]) -> Option<isize> {
-    calc_min_fuel(positions, |x| (1..=x).sum())
+    calc_min_fuel(positions, |x| x * (x + 1) / 2)
 }
 
 fn calc_min_fuel(positions: &[isize], step_fn: impl Fn(isize) -> isize) -> Option<isize> {

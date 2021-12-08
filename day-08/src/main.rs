@@ -27,20 +27,20 @@ fn count_1_4_7_8_appearance(input: &[(Vec<String>, Vec<String>)]) -> usize {
 /// If the segment is active, the char on index i is 1, otherwise it is 0
 ///
 /// segments:     indices:
-///  aaaa            6
-/// b    c        5     4
+///  aaaa            0
+/// b    c        1     2
 /// b    c
 ///  dddd   --->     3
-/// e    f        2     1
+/// e    f        4     5
 /// e    f
-///  gggg            0
+///  gggg            6
 ///
-/// for example, number 7 maps to "0100101"
+/// for example, number 7 maps to "1010010"
 ///
 ///  aaaa            1
 ///      b        0     1
 ///      b
-///         --->     0      --->    0100101
+///         --->     0      --->    1010010
 ///      c        0     1
 ///      c
 ///                  0
@@ -48,15 +48,15 @@ fn count_1_4_7_8_appearance(input: &[(Vec<String>, Vec<String>)]) -> usize {
 fn get_digit_mappings() -> Option<HashMap<usize, usize>> {
     Some(HashMap::from([
         (usize::from_str_radix("1110111", 2).ok()?, 0),
-        (usize::from_str_radix("0100100", 2).ok()?, 1),
+        (usize::from_str_radix("0010010", 2).ok()?, 1),
         (usize::from_str_radix("1011101", 2).ok()?, 2),
-        (usize::from_str_radix("1101101", 2).ok()?, 3),
-        (usize::from_str_radix("0101110", 2).ok()?, 4),
+        (usize::from_str_radix("1011011", 2).ok()?, 3),
+        (usize::from_str_radix("0111010", 2).ok()?, 4),
         (usize::from_str_radix("1101011", 2).ok()?, 5),
-        (usize::from_str_radix("1111011", 2).ok()?, 6),
-        (usize::from_str_radix("0100101", 2).ok()?, 7),
+        (usize::from_str_radix("1101111", 2).ok()?, 6),
+        (usize::from_str_radix("1010010", 2).ok()?, 7),
         (usize::from_str_radix("1111111", 2).ok()?, 8),
-        (usize::from_str_radix("1101111", 2).ok()?, 9),
+        (usize::from_str_radix("1111011", 2).ok()?, 9),
     ]))
 }
 
@@ -77,22 +77,22 @@ fn get_value_for_mapping(
     let (mut input, output) = line.clone();
     input.sort_by_key(|a| a.len());
 
-    let mut digit2char_mappings = HashMap::new();
+    let mut segment_mappings = HashMap::new();
     let chars_per_item = input
         .iter()
         .map(|item| item.chars().collect::<HashSet<_>>())
         .collect::<Vec<_>>();
-    digit2char_mappings.insert(0, &chars_per_item[1] ^ &chars_per_item[0]);
-    digit2char_mappings.insert(
+    segment_mappings.insert(0, &chars_per_item[1] ^ &chars_per_item[0]);
+    segment_mappings.insert(
         3,
         &(&(&chars_per_item[3] & &chars_per_item[4]) & &chars_per_item[5]) & &chars_per_item[2],
     );
 
-    digit2char_mappings.insert(
+    segment_mappings.insert(
         1,
-        &(&chars_per_item[0] ^ &chars_per_item[2]) ^ digit2char_mappings.get(&3).unwrap(),
+        &(&chars_per_item[0] ^ &chars_per_item[2]) ^ segment_mappings.get(&3)?,
     );
-    digit2char_mappings.insert(
+    segment_mappings.insert(
         4,
         &((&(&chars_per_item[3] & &chars_per_item[4]) & &chars_per_item[5])
             .union(&chars_per_item[2])
@@ -100,24 +100,24 @@ fn get_value_for_mapping(
             .collect::<HashSet<_>>())
             ^ &chars_per_item[9],
     );
-    digit2char_mappings.insert(
+    segment_mappings.insert(
         6,
         &(&(chars_per_item[1]
             .union(&chars_per_item[2])
             .copied()
             .collect::<HashSet<_>>())
             ^ &chars_per_item[9])
-            ^ digit2char_mappings.get(&4).unwrap(),
+            ^ segment_mappings.get(&4)?,
     );
 
-    digit2char_mappings.insert(
+    segment_mappings.insert(
         5,
         &(&(&chars_per_item[6] ^ &chars_per_item[8]) ^ &chars_per_item[7]) & &chars_per_item[0],
     );
 
-    digit2char_mappings.insert(2, &chars_per_item[0] ^ digit2char_mappings.get(&5).unwrap());
+    segment_mappings.insert(2, &chars_per_item[0] ^ segment_mappings.get(&5)?);
 
-    let char2digit_mappings = digit2char_mappings
+    let char2digit_mappings = segment_mappings
         .iter()
         .filter_map(|(&pos, char_set)| Some((*char_set.iter().next()?, pos)))
         .collect::<HashMap<_, _>>();
@@ -127,7 +127,7 @@ fn get_value_for_mapping(
             .rev()
             .filter_map(|item| {
                 digit_mappings.get(&item.chars().fold(0, |acc, ch| {
-                    acc | (1 << char2digit_mappings.get(&ch).unwrap())
+                    acc | (1 << (6 - char2digit_mappings.get(&ch).unwrap()))
                 }))
             })
             .enumerate()

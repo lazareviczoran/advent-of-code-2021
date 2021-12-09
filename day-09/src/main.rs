@@ -6,8 +6,8 @@ fn main() {
     println!("part2 solution: {}", multiply_top3_basins(&map));
 }
 
-fn sum_risk_level(map: &[Vec<usize>]) -> usize {
-    let mut sum = 0;
+fn find_low_points(map: &[Vec<usize>]) -> Vec<(usize, usize)> {
+    let mut low_points = vec![];
     for y in 0..map.len() {
         for x in 0..map[0].len() {
             let mut positions = vec![];
@@ -24,41 +24,31 @@ fn sum_risk_level(map: &[Vec<usize>]) -> usize {
                 positions.push((y + 1, x));
             }
             if positions.iter().all(|&(y1, x1)| map[y1][x1] > map[y][x]) {
-                sum += map[y][x] + 1;
+                low_points.push((y, x));
             }
         }
     }
-    sum
+    low_points
+}
+
+fn sum_risk_level(map: &[Vec<usize>]) -> usize {
+    find_low_points(map)
+        .iter()
+        .map(|&(y, x)| map[y][x] + 1)
+        .sum()
 }
 
 fn multiply_top3_basins(map: &[Vec<usize>]) -> usize {
-    let mut basins = vec![];
-    for y in 0..map.len() {
-        for x in 0..map[0].len() {
-            let mut positions = vec![];
-            if x > 0 {
-                positions.push((y, x - 1));
-            }
-            if x < map[0].len() - 1 {
-                positions.push((y, x + 1));
-            }
-            if y > 0 {
-                positions.push((y - 1, x));
-            }
-            if y < map.len() - 1 {
-                positions.push((y + 1, x));
-            }
-            if positions.iter().all(|&(y1, x1)| map[y1][x1] > map[y][x]) {
-                basins.push(find_basin_size(map, (y, x)));
-            }
-        }
-    }
+    let mut basins = find_low_points(map)
+        .iter()
+        .map(|pos| find_basin_size(map, pos))
+        .collect::<Vec<_>>();
     basins.sort_unstable();
     basins.iter().rev().take(3).product()
 }
 
-fn find_basin_size(map: &[Vec<usize>], pos: (usize, usize)) -> usize {
-    let mut q = vec![pos];
+fn find_basin_size(map: &[Vec<usize>], pos: &(usize, usize)) -> usize {
+    let mut q = vec![*pos];
     let mut visited = HashSet::new();
     while !q.is_empty() {
         let (curr_y, curr_x) = q.remove(0);

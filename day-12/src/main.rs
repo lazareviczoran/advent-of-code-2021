@@ -3,99 +3,86 @@ use std::{
     fs::read_to_string,
 };
 
+const START: &str = "start";
+const END: &str = "end";
+
 fn main() {
-    let connections = read("input.txt");
+    let content = read("input.txt");
+    let connections = parse(&content);
     println!("part1 solution: {:?}", count_paths(&connections, false));
     println!("part2 solution: {:?}", count_paths(&connections, true));
 }
 
-fn count_paths(
-    connections: &HashMap<String, Vec<String>>,
+fn count_paths<'a>(
+    connections: &HashMap<&'a str, Vec<&'a str>>,
     can_visit_one_small_twice: bool,
 ) -> Option<usize> {
-    let mut q = vec![(String::from("start"), HashSet::new(), false)];
+    let mut q = vec![(START, HashSet::new(), false)];
     let mut count = 0;
     while !q.is_empty() {
         let (current, mut visited, mut visited_twice) = q.pop()?;
-        if &current == "end" {
+        if current == END {
             count += 1;
             continue;
         }
         if current.chars().next()?.is_lowercase() {
             let already_visited = visited.contains(&current);
-            if already_visited
-                && (!can_visit_one_small_twice || visited_twice || &current == "start")
+            if already_visited && (!can_visit_one_small_twice || visited_twice || current == START)
             {
                 continue;
             }
             if already_visited {
                 visited_twice = true;
             }
-            visited.insert(current.clone());
+            visited.insert(current);
         }
-        let neighbours = connections.get(&current)?;
-        for neighbour in neighbours {
-            q.push((neighbour.to_string(), visited.clone(), visited_twice));
+        for neighbour in connections.get(&current)? {
+            q.push((neighbour, visited.clone(), visited_twice));
         }
     }
 
     Some(count)
 }
 
-fn read(filename: &str) -> HashMap<String, Vec<String>> {
-    read_to_string(filename)
-        .expect("Failed to read file")
-        .lines()
-        .fold(HashMap::new(), |mut acc, l| {
-            let (from, to) = l.split_once('-').unwrap();
-            acc.entry(from.to_string())
-                .or_insert_with(Vec::new)
-                .push(to.to_string());
-            acc.entry(to.to_string())
-                .or_insert_with(Vec::new)
-                .push(from.to_string());
+fn read(filename: &str) -> String {
+    read_to_string(filename).expect("Failed to read file")
+}
 
-            acc
-        })
+fn parse(content: &str) -> HashMap<&str, Vec<&str>> {
+    content.lines().fold(HashMap::new(), |mut acc, l| {
+        let (from, to) = l.split_once('-').unwrap();
+        acc.entry(from).or_insert_with(Vec::new).push(to);
+        acc.entry(to).or_insert_with(Vec::new).push(from);
+
+        acc
+    })
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{count_paths, read};
+    use crate::{count_paths, parse, read};
 
     #[test]
-    fn part1_test1() {
-        let connections = read("test-input.txt");
+    fn test1() {
+        let content = read("test-input.txt");
+        let connections = parse(&content);
         assert_eq!(count_paths(&connections, false), Some(10));
-    }
-
-    #[test]
-    fn part1_test2() {
-        let connections = read("test-input2.txt");
-        assert_eq!(count_paths(&connections, false), Some(19));
-    }
-
-    #[test]
-    fn part1_test3() {
-        let connections = read("test-input3.txt");
-        assert_eq!(count_paths(&connections, false), Some(226));
-    }
-
-    #[test]
-    fn part2_test1() {
-        let connections = read("test-input.txt");
         assert_eq!(count_paths(&connections, true), Some(36));
     }
 
     #[test]
-    fn part2_test2() {
-        let connections = read("test-input2.txt");
+    fn test2() {
+        let content = read("test-input2.txt");
+        let connections = parse(&content);
+        assert_eq!(count_paths(&connections, false), Some(19));
         assert_eq!(count_paths(&connections, true), Some(103));
     }
 
     #[test]
-    fn part2_test3() {
-        let connections = read("test-input3.txt");
+    fn test3() {
+        let content = read("test-input3.txt");
+        let connections = parse(&content);
+        assert_eq!(count_paths(&connections, false), Some(226));
         assert_eq!(count_paths(&connections, true), Some(3509));
     }
 }

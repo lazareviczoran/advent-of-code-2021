@@ -6,6 +6,15 @@ fn main() {
         "part1 solution: {}",
         fold(&mut map.clone(), instructions[0])
     );
+    fold_all(&mut map, &instructions);
+    println!("part2 solution:");
+    print_map(&map);
+}
+
+fn fold_all(map: &mut HashSet<(usize, usize)>, instructions: &[(char, usize)]) {
+    for &(fold_by_axis, fold_position) in instructions {
+        fold(map, ((fold_by_axis, fold_position)));
+    }
 }
 
 fn fold(map: &mut HashSet<(usize, usize)>, (fold_by_axis, fold_position): (char, usize)) -> usize {

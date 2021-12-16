@@ -2,14 +2,166 @@ use std::{fs::read_to_string, iter::Peekable};
 
 fn main() {
     let hex = read("input.txt");
+    let decoder = PacketDecoder::new(&hex);
     println!(
-        "part1 solution: {}",
-        decode_packet(convert_hex_to_bin(&hex).iter().peekable()).0
+        "part1 solution: {:?}",
+        decoder.packet.calculate_version_sum()
     );
-    println!(
-        "part2 solution: {:?}",
-        evaluate_packet(convert_hex_to_bin(&hex).iter().peekable()).0
-    );
+    println!("part2 solution: {:?}", decoder.packet.evaluate_packet());
+}
+
+#[derive(Debug)]
+struct Packet {
+    version: usize,
+    type_id: usize,
+    size: usize,
+    value: Option<usize>,
+    sub_packets: Vec<Packet>,
+}
+impl Packet {
+    pub fn new() -> Self {
+        Self {
+            version: 0,
+            type_id: 0,
+            size: 0,
+            value: None,
+            sub_packets: vec![],
+        }
+    }
+
+    pub fn set_version<'a, T>(&mut self, iter: &mut Peekable<T>)
+    where
+        T: Iterator<Item = &'a u8>,
+    {
+        self.version = PacketDecoder::evaluate_binary(iter, 3);
+        self.size += 3;
+    }
+
+    pub fn set_type_id<'a, T>(&mut self, iter: &mut Peekable<T>)
+    where
+        T: Iterator<Item = &'a u8>,
+    {
+        self.type_id = PacketDecoder::evaluate_binary(iter, 3);
+        self.size += 3;
+    }
+
+    pub fn set_value<'a, T>(&mut self, iter: &mut Peekable<T>)
+    where
+        T: Iterator<Item = &'a u8>,
+    {
+        let mut bits = vec![];
+        loop {
+            let is_last = iter.next().unwrap();
+            bits.extend((0..4).filter_map(|_| iter.next()));
+            self.size += 5;
+            if is_last == &0 {
+                self.value = Some(PacketDecoder::evaluate_binary(
+                    &mut bits.iter().peekable(),
+                    bits.len(),
+                ));
+                break;
+            }
+        }
+    }
+
+    pub fn calculate_version_sum(&self) -> usize {
+        self.version
+            + self
+                .sub_packets
+                .iter()
+                .map(|packet| packet.calculate_version_sum())
+                .sum::<usize>()
+    }
+
+    pub fn evaluate_packet(&self) -> usize {
+        match self.type_id {
+            4 => self.value.unwrap(),
+            5 => {
+                (self.sub_packets[0].evaluate_packet() > self.sub_packets[1].evaluate_packet())
+                    as usize
+            }
+            6 => {
+                (self.sub_packets[0].evaluate_packet() < self.sub_packets[1].evaluate_packet())
+                    as usize
+            }
+            7 => {
+                (self.sub_packets[0].evaluate_packet() == self.sub_packets[1].evaluate_packet())
+                    as usize
+            }
+            _ => self.sub_packets[1..].iter().fold(
+                self.sub_packets[0].evaluate_packet(),
+                |acc, packet| match self.type_id {
+                    0 => acc + packet.evaluate_packet(),
+                    1 => acc * packet.evaluate_packet(),
+                    2 => acc.min(packet.evaluate_packet()),
+                    _ => acc.max(packet.evaluate_packet()),
+                },
+            ),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct PacketDecoder {
+    packet: Packet,
+}
+impl PacketDecoder {
+    pub fn new(hex_transmission: &str) -> Self {
+        let bits = convert_hex_to_bin(hex_transmission);
+        let packet = Self::decode_packet(&mut bits.iter().peekable());
+        Self { packet }
+    }
+
+    fn evaluate_binary<'a, T>(iter: &mut Peekable<T>, length: usize) -> usize
+    where
+        T: Iterator<Item = &'a u8>,
+    {
+        (0..length)
+            .filter_map(|_| iter.next())
+            .enumerate()
+            .fold(0, |acc, (pos, bit)| {
+                acc | (*bit as usize * (1 << (length - pos - 1)))
+            })
+    }
+
+    fn decode_packet<'a, T>(iter: &mut Peekable<T>) -> Packet
+    where
+        T: Iterator<Item = &'a u8>,
+    {
+        let mut packet = Packet::new();
+        packet.set_version(iter);
+        packet.set_type_id(iter);
+        match packet.type_id {
+            4 => packet.set_value(iter),
+            _ => match iter.next() {
+                Some(0) => {
+                    let total_length = PacketDecoder::evaluate_binary(iter, 15);
+                    packet.size += 15;
+                    let mut internal_steps_count = 0;
+                    loop {
+                        let subpacket = Self::decode_packet(iter);
+                        internal_steps_count += subpacket.size;
+                        packet.sub_packets.push(subpacket);
+                        if total_length - internal_steps_count < 8 {
+                            packet.size += total_length;
+                            break;
+                        }
+                    }
+                }
+                Some(1) => {
+                    let num_of_11_bit_subpackets = PacketDecoder::evaluate_binary(iter, 11);
+                    packet.size += 11;
+                    for _ in 0..num_of_11_bit_subpackets {
+                        let subpacket = Self::decode_packet(iter);
+                        packet.size += subpacket.size;
+                        packet.sub_packets.push(subpacket);
+                    }
+                }
+                _ => unreachable!(),
+            },
+        }
+        packet
+    }
 }
 
 fn convert_hex_to_bin(from: &str) -> Vec<u8> {
@@ -39,102 +191,6 @@ fn convert_hex_to_bin(from: &str) -> Vec<u8> {
         })
 }
 
-fn evaluate_binary(binary: &[u8]) -> usize {
-    binary
-        .iter()
-        .rev()
-        .enumerate()
-        .fold(0, |acc, (pos, bit)| acc | (*bit as usize * (1 << pos)))
-}
-
-fn evaluate_binary_usize(binary: &[u8]) -> usize {
-    binary
-        .iter()
-        .rev()
-        .enumerate()
-        .fold(0, |acc, (pos, bit)| acc | (*bit as usize * (1 << pos)))
-}
-
-fn decode_packet<'a, T>(mut iter: Peekable<T>) -> (usize, usize, Peekable<T>)
-where
-    T: Iterator<Item = &'a u8>,
-{
-    let mut steps_count = 0;
-    let mut sum_version_numbers = 0;
-    let (size, _) = iter.size_hint();
-    if size < 8 {
-        (0..size).for_each(|_| {
-            iter.next();
-        });
-        steps_count += size;
-        return (sum_version_numbers, steps_count, iter);
-    }
-    let version = evaluate_binary(
-        &(0..3)
-            .filter_map(|_| iter.next())
-            .copied()
-            .collect::<Vec<_>>(),
-    );
-    steps_count += 3;
-    sum_version_numbers += version;
-    let type_id = evaluate_binary(
-        &(0..3)
-            .filter_map(|_| iter.next())
-            .copied()
-            .collect::<Vec<_>>(),
-    );
-    steps_count += 3;
-    match type_id {
-        4 => loop {
-            let is_last = iter.next().unwrap();
-            (0..4).for_each(|_| {
-                iter.next();
-            });
-            steps_count += 5;
-            if is_last == &0 {
-                break;
-            }
-        },
-        _ => {
-            if iter.next().unwrap() == &0 {
-                let total_length = evaluate_binary(
-                    &(0..15)
-                        .filter_map(|_| iter.next())
-                        .copied()
-                        .collect::<Vec<_>>(),
-                );
-                steps_count += 15;
-                let mut internal_steps_count = 0;
-                loop {
-                    let (subpacket_version, steps, remaining_iter) = decode_packet(iter);
-                    sum_version_numbers += subpacket_version;
-                    internal_steps_count += steps;
-                    iter = remaining_iter;
-                    if internal_steps_count >= total_length {
-                        steps_count += internal_steps_count;
-                        break;
-                    }
-                }
-            } else {
-                let num_of_11_bit_subpackets = evaluate_binary(
-                    &(0..11)
-                        .filter_map(|_| iter.next())
-                        .copied()
-                        .collect::<Vec<_>>(),
-                );
-                steps_count += 11;
-                for _ in 0..num_of_11_bit_subpackets {
-                    let (subpacket_version, steps, remaining_iter) = decode_packet(iter);
-                    sum_version_numbers += subpacket_version;
-                    iter = remaining_iter;
-                    steps_count += steps;
-                }
-            }
-        }
-    }
-    (sum_version_numbers, steps_count, iter)
-}
-
 fn read(filename: &str) -> String {
     read_to_string(filename)
         .expect("Failed to read file")
@@ -145,363 +201,81 @@ fn read(filename: &str) -> String {
         .unwrap()
 }
 
-fn evaluate_packet<'a, T>(iter: Peekable<T>) -> (Option<usize>, usize, Peekable<T>)
-where
-    T: Iterator<Item = &'a u8>,
-{
-    evaluate_packet_internal(iter, None)
-}
-
-fn evaluate_packet_internal<'a, T>(
-    mut iter: Peekable<T>,
-    length_limit: Option<usize>,
-) -> (Option<usize>, usize, Peekable<T>)
-where
-    T: Iterator<Item = &'a u8>,
-{
-    let mut steps_count = 0;
-    let mut packet_value = 0;
-    let _version = evaluate_binary(
-        &(0..3)
-            .filter_map(|_| iter.next())
-            .copied()
-            .collect::<Vec<_>>(),
-    );
-    steps_count += 3;
-    let type_id = evaluate_binary(
-        &(0..3)
-            .filter_map(|_| iter.next())
-            .copied()
-            .collect::<Vec<_>>(),
-    );
-    steps_count += 3;
-    match type_id {
-        4 => {
-            let mut bits = vec![];
-            loop {
-                let is_last = iter.next().unwrap();
-                (0..4)
-                    .filter_map(|_| Some(*iter.next()?))
-                    .for_each(|bit| bits.push(bit));
-
-                steps_count += 5;
-                if is_last == &0 {
-                    packet_value += evaluate_binary_usize(&bits);
-                    // if let Some(limit) = length_limit {
-                    //     if limit - steps_count < 8 {
-                    //         (0..=limit - steps_count).for_each(|_| {
-                    //             steps_count += 1;
-                    //             iter.next();
-                    //         });
-                    //     }
-                    // }
-                    break;
-                }
-            }
-        }
-        5 => {
-            if iter.next().unwrap() == &0 {
-                let total_length = evaluate_binary(
-                    &(0..15)
-                        .filter_map(|_| iter.next())
-                        .copied()
-                        .collect::<Vec<_>>(),
-                );
-                steps_count += 15;
-                let (subpacket_value1, steps1, remaining_iter1) =
-                    evaluate_packet_internal(iter, None);
-                iter = remaining_iter1;
-                steps_count += steps1;
-                let (subpacket_value2, steps2, remaining_iter2) =
-                    evaluate_packet_internal(iter, Some(total_length - steps1));
-                iter = remaining_iter2;
-                steps_count += steps2;
-                packet_value += (subpacket_value1 > subpacket_value2) as usize;
-            } else {
-                let num_of_11_bit_subpackets = evaluate_binary(
-                    &(0..11)
-                        .filter_map(|_| iter.next())
-                        .copied()
-                        .collect::<Vec<_>>(),
-                );
-                // assert_eq!(num_of_11_bit_subpackets, 2);
-                steps_count += 11;
-                let (subpacket_value1, steps1, remaining_iter1) =
-                    evaluate_packet_internal(iter, None);
-                iter = remaining_iter1;
-                steps_count += steps1;
-                let (subpacket_value2, steps2, remaining_iter2) =
-                    evaluate_packet_internal(iter, None);
-                iter = remaining_iter2;
-                steps_count += steps2;
-                packet_value += (subpacket_value1 > subpacket_value2) as usize;
-            }
-        }
-        6 => {
-            if iter.next().unwrap() == &0 {
-                let total_length = evaluate_binary(
-                    &(0..15)
-                        .filter_map(|_| iter.next())
-                        .copied()
-                        .collect::<Vec<_>>(),
-                );
-                steps_count += 15;
-                let (subpacket_value1, steps1, remaining_iter1) =
-                    evaluate_packet_internal(iter, None);
-                iter = remaining_iter1;
-                steps_count += steps1;
-                let (subpacket_value2, steps2, remaining_iter2) =
-                    evaluate_packet_internal(iter, Some(total_length - steps1));
-                iter = remaining_iter2;
-                steps_count += steps2;
-                packet_value += (subpacket_value1 < subpacket_value2) as usize;
-            } else {
-                let num_of_11_bit_subpackets = evaluate_binary(
-                    &(0..11)
-                        .filter_map(|_| iter.next())
-                        .copied()
-                        .collect::<Vec<_>>(),
-                );
-                // assert_eq!(num_of_11_bit_subpackets, 2);
-                steps_count += 11;
-                let (subpacket_value1, steps1, remaining_iter1) =
-                    evaluate_packet_internal(iter, None);
-                iter = remaining_iter1;
-                steps_count += steps1;
-                let (subpacket_value2, steps2, remaining_iter2) =
-                    evaluate_packet_internal(iter, None);
-                iter = remaining_iter2;
-                steps_count += steps2;
-                packet_value += (subpacket_value1 < subpacket_value2) as usize;
-            }
-        }
-        7 => {
-            if iter.next().unwrap() == &0 {
-                let total_length = evaluate_binary(
-                    &(0..15)
-                        .filter_map(|_| iter.next())
-                        .copied()
-                        .collect::<Vec<_>>(),
-                );
-                steps_count += 15;
-                let (subpacket_value1, steps1, remaining_iter1) =
-                    evaluate_packet_internal(iter, None);
-                iter = remaining_iter1;
-                steps_count += steps1;
-                let (subpacket_value2, steps2, remaining_iter2) =
-                    evaluate_packet_internal(iter, Some(total_length - steps1));
-                iter = remaining_iter2;
-                steps_count += steps2;
-                packet_value += (subpacket_value1 == subpacket_value2) as usize;
-            } else {
-                let num_of_11_bit_subpackets = evaluate_binary(
-                    &(0..11)
-                        .filter_map(|_| iter.next())
-                        .copied()
-                        .collect::<Vec<_>>(),
-                );
-                // assert_eq!(num_of_11_bit_subpackets, 2);
-                steps_count += 11;
-                let (subpacket_value1, steps1, remaining_iter1) =
-                    evaluate_packet_internal(iter, None);
-                iter = remaining_iter1;
-                steps_count += steps1;
-                let (subpacket_value2, steps2, remaining_iter2) =
-                    evaluate_packet_internal(iter, None);
-                iter = remaining_iter2;
-                steps_count += steps2;
-                packet_value += (subpacket_value1 == subpacket_value2) as usize;
-            }
-        }
-        _ => {
-            if iter.next().unwrap() == &0 {
-                let total_length = evaluate_binary(
-                    &(0..15)
-                        .filter_map(|_| iter.next())
-                        .copied()
-                        .collect::<Vec<_>>(),
-                );
-                steps_count += 15;
-                let mut internal_steps_count = 0;
-                let mut internal_value = if [0, 3].contains(&type_id) {
-                    0
-                } else if [1].contains(&type_id) {
-                    1
-                } else {
-                    usize::MAX
-                };
-                loop {
-                    let (subpacket_value, steps, remaining_iter) =
-                        evaluate_packet_internal(iter, Some(total_length - internal_steps_count));
-                    if let Some(subpacket_value) = subpacket_value {
-                        match type_id {
-                            0 => internal_value += subpacket_value,
-                            1 => internal_value *= subpacket_value,
-                            2 => internal_value = internal_value.min(subpacket_value),
-                            _ => internal_value = internal_value.max(subpacket_value),
-                        }
-                    }
-                    iter = remaining_iter;
-                    internal_steps_count += steps;
-                    if total_length - internal_steps_count < 8 {
-                        packet_value += internal_value;
-                        steps_count += total_length;
-                        break;
-                    }
-                }
-            } else {
-                let num_of_11_bit_subpackets = evaluate_binary(
-                    &(0..11)
-                        .filter_map(|_| iter.next())
-                        .copied()
-                        .collect::<Vec<_>>(),
-                );
-                steps_count += 11;
-                let mut internal_value = if [0, 3].contains(&type_id) {
-                    0
-                } else if [1].contains(&type_id) {
-                    1
-                } else {
-                    usize::MAX
-                };
-                let mut internal_steps = 0;
-                for _ in 1..=num_of_11_bit_subpackets {
-                    let (subpacket_value, steps, remaining_iter) =
-                        evaluate_packet_internal(iter, None);
-                    if let Some(subpacket_value) = subpacket_value {
-                        match type_id {
-                            0 => internal_value += subpacket_value,
-                            1 => internal_value *= subpacket_value,
-                            2 => internal_value = internal_value.min(subpacket_value),
-                            _ => internal_value = internal_value.max(subpacket_value),
-                        }
-                    }
-                    iter = remaining_iter;
-                    internal_steps += steps;
-                }
-                steps_count += internal_steps;
-                packet_value += internal_value;
-            }
-        }
-    }
-
-    (Some(packet_value), steps_count, iter)
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::{convert_hex_to_bin, decode_packet, evaluate_binary, evaluate_packet};
+    use crate::{convert_hex_to_bin, PacketDecoder};
 
     #[test]
     fn test_evaluate() {
-        assert_eq!(evaluate_binary(&[1, 0, 0]), 4);
+        assert_eq!(
+            PacketDecoder::evaluate_binary(&mut [1, 0, 1].iter().peekable(), 3),
+            5
+        );
+        assert_eq!(
+            PacketDecoder::evaluate_binary(&mut [1, 0, 0].iter().peekable(), 3),
+            4
+        );
     }
 
     #[test]
     fn test_convert_hex_to_bin() {
-        let bin = convert_hex_to_bin("D2FE28");
+        let decoder = PacketDecoder::new("D2FE28");
         assert_eq!(
-            bin,
+            convert_hex_to_bin("D2FE28"),
             vec![1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0]
         );
-        assert_eq!(decode_packet(bin.iter().peekable()).0, 6);
+        assert_eq!(decoder.packet.calculate_version_sum(), 6);
 
-        let bin = convert_hex_to_bin("38006F45291200");
+        let decoder = PacketDecoder::new("38006F45291200");
         assert_eq!(
-            bin,
+            convert_hex_to_bin("38006F45291200"),
             vec![
                 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0,
                 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0
             ]
         );
-        assert_eq!(decode_packet(bin.iter().peekable()).0, 9);
+        assert_eq!(decoder.packet.calculate_version_sum(), 9);
 
-        let bin = convert_hex_to_bin("EE00D40C823060");
+        let decoder = PacketDecoder::new("EE00D40C823060");
         assert_eq!(
-            bin,
+            convert_hex_to_bin("EE00D40C823060"),
             vec![
                 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0,
                 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0
             ]
         );
-        assert_eq!(decode_packet(bin.iter().peekable()).0, 14);
+        assert_eq!(decoder.packet.calculate_version_sum(), 14);
     }
 
     #[test]
     fn part1_test() {
-        assert_eq!(
-            decode_packet(convert_hex_to_bin("8A004A801A8002F478").iter().peekable()).0,
-            16
-        );
-
-        assert_eq!(
-            decode_packet(
-                convert_hex_to_bin("620080001611562C8802118E34")
-                    .iter()
-                    .peekable()
-            )
-            .0,
-            12
-        );
-        assert_eq!(
-            decode_packet(
-                convert_hex_to_bin("C0015000016115A2E0802F182340")
-                    .iter()
-                    .peekable()
-            )
-            .0,
-            23
-        );
-        assert_eq!(
-            decode_packet(
-                convert_hex_to_bin("A0016C880162017C3686B18A3D4780")
-                    .iter()
-                    .peekable()
-            )
-            .0,
-            31
-        );
+        let decoder = PacketDecoder::new("8A004A801A8002F478");
+        assert_eq!(decoder.packet.calculate_version_sum(), 16);
+        let decoder = PacketDecoder::new("620080001611562C8802118E34");
+        assert_eq!(decoder.packet.calculate_version_sum(), 12);
+        let decoder = PacketDecoder::new("C0015000016115A2E0802F182340");
+        assert_eq!(decoder.packet.calculate_version_sum(), 23);
+        let decoder = PacketDecoder::new("A0016C880162017C3686B18A3D4780");
+        assert_eq!(decoder.packet.calculate_version_sum(), 31);
     }
 
     #[test]
     fn part2_test() {
-        assert_eq!(
-            evaluate_packet(convert_hex_to_bin("C200B40A82").iter().peekable()).0,
-            Some(3)
-        );
-
-        assert_eq!(
-            evaluate_packet(convert_hex_to_bin("04005AC33890").iter().peekable()).0,
-            Some(54)
-        );
-        assert_eq!(
-            evaluate_packet(convert_hex_to_bin("880086C3E88112").iter().peekable()).0,
-            Some(7)
-        );
-        assert_eq!(
-            evaluate_packet(convert_hex_to_bin("CE00C43D881120").iter().peekable()).0,
-            Some(9)
-        );
-        assert_eq!(
-            evaluate_packet(convert_hex_to_bin("D8005AC2A8F0").iter().peekable()).0,
-            Some(1)
-        );
-        assert_eq!(
-            evaluate_packet(convert_hex_to_bin("F600BC2D8F").iter().peekable()).0,
-            Some(0)
-        );
-        assert_eq!(
-            evaluate_packet(convert_hex_to_bin("9C005AC2F8F0").iter().peekable()).0,
-            Some(0)
-        );
-        assert_eq!(
-            evaluate_packet(
-                convert_hex_to_bin("9C0141080250320F1802104A08")
-                    .iter()
-                    .peekable()
-            )
-            .0,
-            Some(1)
-        );
+        let decoder = PacketDecoder::new("C200B40A82");
+        assert_eq!(decoder.packet.evaluate_packet(), 3);
+        let decoder = PacketDecoder::new("04005AC33890");
+        assert_eq!(decoder.packet.evaluate_packet(), 54);
+        let decoder = PacketDecoder::new("880086C3E88112");
+        assert_eq!(decoder.packet.evaluate_packet(), 7);
+        let decoder = PacketDecoder::new("CE00C43D881120");
+        assert_eq!(decoder.packet.evaluate_packet(), 9);
+        let decoder = PacketDecoder::new("D8005AC2A8F0");
+        assert_eq!(decoder.packet.evaluate_packet(), 1);
+        let decoder = PacketDecoder::new("F600BC2D8F");
+        assert_eq!(decoder.packet.evaluate_packet(), 0);
+        let decoder = PacketDecoder::new("9C005AC2F8F0");
+        assert_eq!(decoder.packet.evaluate_packet(), 0);
+        let decoder = PacketDecoder::new("9C0141080250320F1802104A08");
+        assert_eq!(decoder.packet.evaluate_packet(), 1);
     }
 }

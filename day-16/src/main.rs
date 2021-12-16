@@ -2,12 +2,9 @@ use std::{fs::read_to_string, iter::Peekable};
 
 fn main() {
     let hex = read("input.txt");
-    let decoder = PacketDecoder::new(&hex);
-    println!(
-        "part1 solution: {:?}",
-        decoder.packet.calculate_version_sum()
-    );
-    println!("part2 solution: {:?}", decoder.packet.evaluate_packet());
+    let packet = PacketDecoder::decode_packet(&hex);
+    println!("part1 solution: {:?}", packet.calculate_version_sum());
+    println!("part2 solution: {:?}", packet.evaluate_packet());
 }
 
 #[derive(Debug)]
@@ -101,15 +98,11 @@ impl Packet {
     }
 }
 
-#[derive(Debug)]
-struct PacketDecoder {
-    packet: Packet,
-}
+struct PacketDecoder;
 impl PacketDecoder {
-    pub fn new(hex_transmission: &str) -> Self {
+    pub fn decode_packet(hex_transmission: &str) -> Packet {
         let bits = convert_hex_to_bin(hex_transmission);
-        let packet = Self::decode_packet(&mut bits.iter().peekable());
-        Self { packet }
+        Self::decode_packet_rec(&mut bits.iter().peekable())
     }
 
     fn evaluate_binary<'a, T>(iter: &mut Peekable<T>, length: usize) -> usize
@@ -124,7 +117,7 @@ impl PacketDecoder {
             })
     }
 
-    fn decode_packet<'a, T>(iter: &mut Peekable<T>) -> Packet
+    fn decode_packet_rec<'a, T>(iter: &mut Peekable<T>) -> Packet
     where
         T: Iterator<Item = &'a u8>,
     {
@@ -135,11 +128,11 @@ impl PacketDecoder {
             4 => packet.set_value(iter),
             _ => match iter.next() {
                 Some(0) => {
-                    let total_length = PacketDecoder::evaluate_binary(iter, 15);
+                    let total_length = Self::evaluate_binary(iter, 15);
                     packet.size += 15;
                     let mut internal_steps_count = 0;
                     loop {
-                        let subpacket = Self::decode_packet(iter);
+                        let subpacket = Self::decode_packet_rec(iter);
                         internal_steps_count += subpacket.size;
                         packet.sub_packets.push(subpacket);
                         if total_length - internal_steps_count < 8 {
@@ -149,10 +142,10 @@ impl PacketDecoder {
                     }
                 }
                 Some(1) => {
-                    let num_of_11_bit_subpackets = PacketDecoder::evaluate_binary(iter, 11);
+                    let num_of_11_bit_subpackets = Self::evaluate_binary(iter, 11);
                     packet.size += 11;
                     for _ in 0..num_of_11_bit_subpackets {
-                        let subpacket = Self::decode_packet(iter);
+                        let subpacket = Self::decode_packet_rec(iter);
                         packet.size += subpacket.size;
                         packet.sub_packets.push(subpacket);
                     }
@@ -207,26 +200,23 @@ mod tests {
 
     #[test]
     fn test_evaluate() {
-        assert_eq!(
-            PacketDecoder::evaluate_binary(&mut [1, 0, 1].iter().peekable(), 3),
-            5
-        );
-        assert_eq!(
-            PacketDecoder::evaluate_binary(&mut [1, 0, 0].iter().peekable(), 3),
-            4
-        );
+        let items = vec![1, 0, 1];
+        let mut iter = items.iter().peekable();
+        assert_eq!(PacketDecoder::evaluate_binary(&mut iter, 3), 5);
+        let items = vec![1, 0, 0];
+        let mut iter = items.iter().peekable();
+        assert_eq!(PacketDecoder::evaluate_binary(&mut iter, 3), 4);
     }
 
     #[test]
     fn test_convert_hex_to_bin() {
-        let decoder = PacketDecoder::new("D2FE28");
         assert_eq!(
             convert_hex_to_bin("D2FE28"),
             vec![1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0]
         );
-        assert_eq!(decoder.packet.calculate_version_sum(), 6);
+        let packet = PacketDecoder::decode_packet("D2FE28");
+        assert_eq!(packet.calculate_version_sum(), 6);
 
-        let decoder = PacketDecoder::new("38006F45291200");
         assert_eq!(
             convert_hex_to_bin("38006F45291200"),
             vec![
@@ -234,9 +224,9 @@ mod tests {
                 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0
             ]
         );
-        assert_eq!(decoder.packet.calculate_version_sum(), 9);
+        let packet = PacketDecoder::decode_packet("38006F45291200");
+        assert_eq!(packet.calculate_version_sum(), 9);
 
-        let decoder = PacketDecoder::new("EE00D40C823060");
         assert_eq!(
             convert_hex_to_bin("EE00D40C823060"),
             vec![
@@ -244,38 +234,39 @@ mod tests {
                 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0
             ]
         );
-        assert_eq!(decoder.packet.calculate_version_sum(), 14);
+        let packet = PacketDecoder::decode_packet("EE00D40C823060");
+        assert_eq!(packet.calculate_version_sum(), 14);
     }
 
     #[test]
     fn part1_test() {
-        let decoder = PacketDecoder::new("8A004A801A8002F478");
-        assert_eq!(decoder.packet.calculate_version_sum(), 16);
-        let decoder = PacketDecoder::new("620080001611562C8802118E34");
-        assert_eq!(decoder.packet.calculate_version_sum(), 12);
-        let decoder = PacketDecoder::new("C0015000016115A2E0802F182340");
-        assert_eq!(decoder.packet.calculate_version_sum(), 23);
-        let decoder = PacketDecoder::new("A0016C880162017C3686B18A3D4780");
-        assert_eq!(decoder.packet.calculate_version_sum(), 31);
+        let packet = PacketDecoder::decode_packet("8A004A801A8002F478");
+        assert_eq!(packet.calculate_version_sum(), 16);
+        let packet = PacketDecoder::decode_packet("620080001611562C8802118E34");
+        assert_eq!(packet.calculate_version_sum(), 12);
+        let packet = PacketDecoder::decode_packet("C0015000016115A2E0802F182340");
+        assert_eq!(packet.calculate_version_sum(), 23);
+        let packet = PacketDecoder::decode_packet("A0016C880162017C3686B18A3D4780");
+        assert_eq!(packet.calculate_version_sum(), 31);
     }
 
     #[test]
     fn part2_test() {
-        let decoder = PacketDecoder::new("C200B40A82");
-        assert_eq!(decoder.packet.evaluate_packet(), 3);
-        let decoder = PacketDecoder::new("04005AC33890");
-        assert_eq!(decoder.packet.evaluate_packet(), 54);
-        let decoder = PacketDecoder::new("880086C3E88112");
-        assert_eq!(decoder.packet.evaluate_packet(), 7);
-        let decoder = PacketDecoder::new("CE00C43D881120");
-        assert_eq!(decoder.packet.evaluate_packet(), 9);
-        let decoder = PacketDecoder::new("D8005AC2A8F0");
-        assert_eq!(decoder.packet.evaluate_packet(), 1);
-        let decoder = PacketDecoder::new("F600BC2D8F");
-        assert_eq!(decoder.packet.evaluate_packet(), 0);
-        let decoder = PacketDecoder::new("9C005AC2F8F0");
-        assert_eq!(decoder.packet.evaluate_packet(), 0);
-        let decoder = PacketDecoder::new("9C0141080250320F1802104A08");
-        assert_eq!(decoder.packet.evaluate_packet(), 1);
+        let packet = PacketDecoder::decode_packet("C200B40A82");
+        assert_eq!(packet.evaluate_packet(), 3);
+        let packet = PacketDecoder::decode_packet("04005AC33890");
+        assert_eq!(packet.evaluate_packet(), 54);
+        let packet = PacketDecoder::decode_packet("880086C3E88112");
+        assert_eq!(packet.evaluate_packet(), 7);
+        let packet = PacketDecoder::decode_packet("CE00C43D881120");
+        assert_eq!(packet.evaluate_packet(), 9);
+        let packet = PacketDecoder::decode_packet("D8005AC2A8F0");
+        assert_eq!(packet.evaluate_packet(), 1);
+        let packet = PacketDecoder::decode_packet("F600BC2D8F");
+        assert_eq!(packet.evaluate_packet(), 0);
+        let packet = PacketDecoder::decode_packet("9C005AC2F8F0");
+        assert_eq!(packet.evaluate_packet(), 0);
+        let packet = PacketDecoder::decode_packet("9C0141080250320F1802104A08");
+        assert_eq!(packet.evaluate_packet(), 1);
     }
 }

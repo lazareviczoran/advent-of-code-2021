@@ -1,29 +1,24 @@
-use std::fs::read_to_string;
+use std::{collections::HashSet, fs::read_to_string};
 
 fn main() {
     let (x_target_range, y_target_range) = read("input.txt");
-
-    println!(
-        "part1 solution: {}",
-        find_highest_y((x_target_range, y_target_range))
-    );
+    let (max_y, distinct_velocities) = find_highest_y((x_target_range, y_target_range));
+    println!("part1 solution: {}", max_y);
+    println!("part1 solution: {}", distinct_velocities);
 }
 
-fn find_highest_y((x_range, y_range): ((isize, isize), (isize, isize))) -> isize {
-    println!("target_x {}", x_range.0);
+fn find_highest_y((x_range, y_range): ((isize, isize), (isize, isize))) -> (isize, usize) {
     let mut max_y = isize::MIN;
-    for vel_x in 0..x_range.0 {
-        for vel_y in 0..1000 {
+    let mut distinct_velocities: HashSet<(isize, isize)> = HashSet::new();
+    for vel_x in 0..=x_range.1 {
+        for vel_y in y_range.0..y_range.0.abs() {
             if let Some(trajectory) = launch_probe((vel_x, vel_y), (x_range, y_range)) {
+                distinct_velocities.insert((vel_x, vel_y));
                 max_y = trajectory.iter().fold(max_y, |acc, &(_, y)| acc.max(y));
-                if max_y == 45 {
-                    println!("vel_x {}, vel_y {}", vel_x, vel_y);
-                    println!("{:?}", trajectory);
-                }
             }
         }
     }
-    max_y
+    (max_y, distinct_velocities.len())
 }
 
 fn launch_probe(
@@ -65,29 +60,23 @@ fn read(filename: &str) -> ((isize, isize), (isize, isize)) {
         .expect("Failed to read file")
         .lines()
         .next()
-        .map(|l| {
-            let stripped = l.strip_prefix("target area: ").unwrap();
-            let (x_range_str, y_range_str) = stripped.split_once(", ").unwrap();
-            (
-                x_range_str
-                    .strip_prefix("x=")
-                    .map(|content| {
-                        content
-                            .split_once("..")
-                            .map(|(from, to)| (from.parse().unwrap(), to.parse().unwrap()))
-                            .unwrap()
-                    })
-                    .unwrap(),
-                y_range_str
-                    .strip_prefix("y=")
-                    .map(|content| {
-                        content
-                            .split_once("..")
-                            .map(|(from, to)| (from.parse().unwrap(), to.parse().unwrap()))
-                            .unwrap()
-                    })
-                    .unwrap(),
-            )
+        .and_then(|l| {
+            l.strip_prefix("target area: ")
+                .and_then(|stripped| stripped.split_once(", "))
+                .and_then(|(x_range_str, y_range_str)| {
+                    Some((
+                        x_range_str.strip_prefix("x=").and_then(|content| {
+                            content
+                                .split_once("..")
+                                .and_then(|(from, to)| Some((from.parse().ok()?, to.parse().ok()?)))
+                        })?,
+                        y_range_str.strip_prefix("y=").and_then(|content| {
+                            content
+                                .split_once("..")
+                                .and_then(|(from, to)| Some((from.parse().ok()?, to.parse().ok()?)))
+                        })?,
+                    ))
+                })
         })
         .unwrap()
 }
@@ -135,6 +124,7 @@ mod tests {
             launch_probe((17, 4), (x_target_range, y_target_range)),
             None
         );
-        assert_eq!(find_highest_y((x_target_range, y_target_range)), 451);
+
+        assert_eq!(find_highest_y((x_target_range, y_target_range)), (45, 112));
     }
 }

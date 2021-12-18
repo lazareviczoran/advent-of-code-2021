@@ -1,30 +1,87 @@
+use itertools::Itertools;
 use std::{
     cell::RefCell,
-    fmt::{self, format},
+    fmt::{self},
     fs::read_to_string,
     iter::Peekable,
     rc::Rc,
     str::Chars,
+    time::Instant,
 };
 
 fn main() {
-    let pair = read("input.txt");
-    println!("part1 solution: {}", pair.calculate_magnitude());
+    let pairs = read("input.txt");
+    println!("part1 solution: {}", sum_all(&pairs));
+    println!("part2 solution: {}", find_max_sum_of_2(&pairs, "input.txt"));
 }
 
-#[derive(Debug)]
+fn sum_all(pairs: &[SnailfishNumber]) -> usize {
+    pairs
+        .iter()
+        .fold(None, |acc: Option<SnailfishNumber>, pair| match acc {
+            Some(item) => Some(item.add(pair)),
+            None => Some(pair.clone()),
+        })
+        .unwrap()
+        .pair
+        .calculate_magnitude()
+}
+
+fn find_max_sum_of_2(pairs: &[SnailfishNumber], filename: &str) -> usize {
+    let instant = Instant::now();
+    let max_sum_between_2 = (0..pairs.len())
+        .permutations(2)
+        .map(|idx| {
+            // let instant = Instant::now();
+            let pairs = read(filename);
+            // println!("read input in {} ms", instant.elapsed().as_millis());
+            pairs[idx[0]].add(&pairs[idx[1]]).pair.calculate_magnitude()
+        })
+        .max()
+        .unwrap();
+    println!("found max in {} ms", instant.elapsed().as_millis());
+
+    max_sum_between_2
+}
+
+#[derive(Debug, Clone)]
+struct SnailfishNumber {
+    pair: PairItem,
+    head: Rc<RefCell<Item>>,
+    tail: Rc<RefCell<Item>>,
+}
+impl SnailfishNumber {
+    pub fn add(&self, other: &Self) -> Self {
+        // let instant = Instant::now();
+        let val1 = self.pair.clone();
+        let val2 = other.pair.clone();
+        self.tail.borrow_mut().right = Some(other.head.clone());
+        other.head.borrow_mut().left = Some(self.tail.clone());
+
+        let mut p = PairItem::Pair(vec![val1, val2]);
+        p.bump_level();
+        p.reduce_till_end();
+        let (head, tail) = p.get_head_and_tail();
+        // println!(
+        //     "completed add operation in {} ms",
+        //     instant.elapsed().as_millis()
+        // );
+        Self {
+            pair: p,
+            head,
+            tail,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 enum PairItem {
     Value(Rc<RefCell<Item>>),
     Pair(Vec<PairItem>),
 }
 impl PairItem {
     pub fn reduce_till_end(&mut self) {
-        let mut i = 0;
-        while self.reduce() {
-            self.print_values();
-            i += 1;
-        }
-        println!("\ncompleted after {:?} steps", i);
+        while self.reduce() {}
     }
 
     pub fn reduce(&mut self) -> bool {
@@ -57,12 +114,12 @@ impl PairItem {
         }
         match new_level {
             Some(level) => {
-                let new_item_ref = Rc::new(RefCell::new(Item {
-                    value: 0,
+                let new_item_ref = Rc::new(RefCell::new(Item::new(
+                    0,
                     level,
-                    left: prev.clone(),
-                    right: next.clone(),
-                }));
+                    prev.clone(),
+                    next.clone(),
+                )));
                 if let Some(prev_ref) = &mut prev {
                     prev_ref.borrow_mut().right = Some(new_item_ref.clone());
                 }
@@ -82,19 +139,14 @@ impl PairItem {
             PairItem::Value(item_ref) => {
                 let mut item = item_ref.borrow_mut();
                 if item.value >= 10 {
-                    let left = Item {
-                        value: item.value / 2,
-                        level: item.level + 1,
-                        left: item.left.clone(),
-                        right: None,
-                    };
+                    let left = Item::new(item.value / 2, item.level + 1, item.left.clone(), None);
                     let left_ref = Rc::new(RefCell::new(left));
-                    let right = Item {
-                        value: (item.value + 1) / 2,
-                        level: item.level + 1,
-                        left: None,
-                        right: item.right.clone(),
-                    };
+                    let right = Item::new(
+                        (item.value + 1) / 2,
+                        item.level + 1,
+                        None,
+                        item.right.clone(),
+                    );
                     let right_ref = Rc::new(RefCell::new(right));
                     left_ref.borrow_mut().right = Some(right_ref.clone());
                     right_ref.borrow_mut().left = Some(left_ref.clone());
@@ -122,23 +174,31 @@ impl PairItem {
         }
     }
 
-    pub fn bump_level(&mut self, return_last: bool) -> Rc<RefCell<Item>> {
+    pub fn get_head_and_tail(&self) -> (Rc<RefCell<Item>>, Rc<RefCell<Item>>) {
         match self {
             PairItem::Value(item_ref) => {
-                let mut first_item_ref = item_ref.clone();
-                first_item_ref.borrow_mut().level += 1;
-                let mut curr_ref = first_item_ref.clone();
-                while curr_ref.borrow().right.is_some() {
+                let first_item_ref = item_ref.clone();
+                let mut curr_ref = item_ref.clone();
+                loop {
+                    if curr_ref.borrow().right.is_none() {
+                        return (first_item_ref, curr_ref);
+                    }
                     curr_ref = curr_ref.clone().borrow().right.clone().unwrap();
-                    curr_ref.borrow_mut().level += 1;
-                }
-                if return_last {
-                    curr_ref.clone()
-                } else {
-                    first_item_ref.clone()
                 }
             }
-            PairItem::Pair(pairs) => pairs[0].bump_level(return_last),
+            PairItem::Pair(pairs) => pairs[0].get_head_and_tail(),
+        }
+    }
+
+    pub fn bump_level(&mut self) {
+        let (head, _tail) = self.get_head_and_tail();
+        let mut curr_ref = head;
+        loop {
+            curr_ref.borrow_mut().level += 1;
+            if curr_ref.borrow().right.is_none() {
+                break;
+            }
+            curr_ref = curr_ref.clone().borrow().right.clone().unwrap();
         }
     }
 
@@ -150,77 +210,38 @@ impl PairItem {
             }
         }
     }
-
-    pub fn add(mut self, mut other: Self) -> Self {
-        let last_p1 = self.bump_level(true);
-        let first_p2 = other.bump_level(false);
-        last_p1.borrow_mut().right = Some(first_p2.clone());
-        first_p2.borrow_mut().left = Some(last_p1);
-        let mut p = Self::Pair(vec![self, other]);
-        p.reduce_till_end();
-        p
-    }
-
-    pub fn print_values(&self) {
-        match self {
-            PairItem::Value(item_ref) => {
-                let mut curr_ref = item_ref.clone();
-                let mut s = format!(
-                    "  v:{} (l:{})  ",
-                    curr_ref.borrow().value,
-                    curr_ref.borrow().level
-                );
-
-                while curr_ref.borrow().right.is_some() {
-                    curr_ref = curr_ref.clone().borrow().right.clone().unwrap();
-                    s.push_str(&format!(
-                        "  v:{} (l:{})  ",
-                        curr_ref.borrow().value,
-                        curr_ref.borrow().level
-                    ));
-                }
-                println!("{}", s);
-            }
-            PairItem::Pair(pairs) => pairs[0].print_values(),
-        }
-    }
 }
 
+#[derive(Clone)]
 struct Item {
     value: usize,
     level: usize,
+    initial_level: usize,
     left: Option<Rc<RefCell<Item>>>,
     right: Option<Rc<RefCell<Item>>>,
 }
-// impl fmt::Display for Item {
-//     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-//         formatter.write_str(&format!(
-//             "Item {{ value: {}, level: {}, left: {}, right: {} }}",
-//             self.value,
-//             self.level,
-//             match &self.left {
-//                 None => "None".into(),
-//                 Some(item_ref) => {
-//                     let item = item_ref.borrow();
-//                     format!("Some ({:?})", item.value)
-//                 }
-//             },
-//             match &self.right {
-//                 None => "None".into(),
-//                 Some(item_ref) => {
-//                     let item = item_ref.borrow();
-//                     format!("{:?}", item.value)
-//                 }
-//             }
-//         ))
-//     }
-// }
 impl fmt::Debug for Item {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str(&format!(
             "Item {{ value: {}, level: {} }}",
             self.value, self.level,
         ))
+    }
+}
+impl Item {
+    pub fn new(
+        value: usize,
+        level: usize,
+        left: Option<Rc<RefCell<Item>>>,
+        right: Option<Rc<RefCell<Item>>>,
+    ) -> Self {
+        Self {
+            value,
+            level,
+            initial_level: level,
+            left,
+            right,
+        }
     }
 }
 
@@ -236,12 +257,12 @@ fn parse_pair(
             let res = match iter.peek() {
                 Some('[') => parse_pair(iter, prev, level + 1),
                 _ => {
-                    let item = Item {
-                        value: (iter.next().unwrap() as u8 - b'0') as usize,
+                    let item = Item::new(
+                        (iter.next().unwrap() as u8 - b'0') as usize,
                         level,
-                        left: prev.clone(),
-                        right: None,
-                    };
+                        prev.clone(),
+                        None,
+                    );
                     let item_ref = Rc::new(RefCell::new(item));
                     if let Some(prev_item) = prev.as_mut() {
                         prev_item.borrow_mut().right = Some(item_ref.clone());
@@ -262,24 +283,21 @@ fn parse_pair(
     PairItem::Pair(pair_items)
 }
 
-fn read(filename: &str) -> PairItem {
-    let mut pairs = read_to_string(filename)
+fn read(filename: &str) -> Vec<SnailfishNumber> {
+    read_to_string(filename)
         .expect("Failed to read file")
         .lines()
-        .map(|l| parse_pair(&mut l.chars().peekable(), &mut None, 0))
-        .collect::<Vec<_>>();
-
-    let p1 = pairs.remove(0);
-    let p2 = pairs.remove(0);
-
-    pairs
-        .into_iter()
-        .fold(p1.add(p2), |prev, pair| prev.add(pair))
+        .map(|l| {
+            let pair = parse_pair(&mut l.chars().peekable(), &mut None, 0);
+            let (head, tail) = pair.get_head_and_tail();
+            SnailfishNumber { pair, head, tail }
+        })
+        .collect::<Vec<_>>()
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{parse_pair, read};
+    use crate::{find_max_sum_of_2, parse_pair, read, sum_all};
 
     #[test]
     fn magnitude_test() {
@@ -296,8 +314,13 @@ mod tests {
 
     #[test]
     fn part1_test() {
-        let pair = read("test-input2.txt");
-        pair.print_values();
-        assert_eq!(pair.calculate_magnitude(), 4140);
+        let pairs = read("test-input.txt");
+        assert_eq!(sum_all(&pairs), 4140);
+    }
+
+    #[test]
+    fn part2_test() {
+        let mut pairs = read("test-input.txt");
+        assert_eq!(find_max_sum_of_2(&mut pairs, "test-input.txt"), 3993);
     }
 }
